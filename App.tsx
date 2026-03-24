@@ -52,6 +52,7 @@ const App: React.FC = () => {
   const [isInitialized, setIsInitialized] = useState(false);
   const [dbConnected, setDbConnected] = useState<boolean | null>(null);
   const [dbError, setDbError] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
   
   // Login States
   const [authStep, setAuthStep] = useState<'CHOICE' | 'CREDENTIALS'>('CHOICE');
@@ -81,9 +82,12 @@ const App: React.FC = () => {
     setLoading(true);
     setDbError(null);
     try {
-      const storedDeliveries = await getData('deliveries');
-      const storedDrivers = await getData('drivers');
-      const storedLoads = await getData('loads');
+      console.log("[App] Iniciando carregamento de dados...");
+      const [storedDeliveries, storedDrivers, storedLoads] = await Promise.all([
+        getData('deliveries'),
+        getData('drivers'),
+        getData('loads')
+      ]);
       
       if (storedDeliveries === null || storedDrivers === null || storedLoads === null) {
         setDbConnected(false);
@@ -92,19 +96,13 @@ const App: React.FC = () => {
       }
 
       setDbConnected(true);
-
-      if (storedDeliveries.length > 0) setDeliveries(storedDeliveries);
-      if (storedLoads.length > 0) setLoads(storedLoads);
+      setDeliveries(storedDeliveries);
+      setLoads(storedLoads);
+      setDrivers(storedDrivers);
       
-      if (storedDrivers.length > 0) {
-        setDrivers(storedDrivers);
-      } else {
-        // Se o banco estiver vazio, não forçamos mais os drivers padrão 
-        // para permitir que o usuário inicie do zero conforme solicitado.
-        setDrivers([]);
-      }
+      console.log("[App] Dados carregados com sucesso.");
     } catch (err) { 
-      console.error("Falha ao inicializar banco:", err); 
+      console.error("[App] Falha ao inicializar banco:", err); 
       setDbConnected(false);
       setDbError("Erro na inicialização do banco de dados.");
     } finally { 
@@ -117,22 +115,45 @@ const App: React.FC = () => {
     loadStoredData();
   }, []);
 
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (isSaving) {
+        e.preventDefault();
+        e.returnValue = '';
+      }
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [isSaving]);
+
   // Debounced Save Effects
   useEffect(() => {
     if (!isInitialized || !dbConnected) return;
-    const timer = setTimeout(() => saveData('deliveries', deliveries), 1000);
+    const timer = setTimeout(async () => {
+      setIsSaving(true);
+      await saveData('deliveries', deliveries);
+      setIsSaving(false);
+    }, 500);
     return () => clearTimeout(timer);
   }, [deliveries, isInitialized, dbConnected]);
 
   useEffect(() => {
     if (!isInitialized || !dbConnected) return;
-    const timer = setTimeout(() => saveData('drivers', drivers), 1000);
+    const timer = setTimeout(async () => {
+      setIsSaving(true);
+      await saveData('drivers', drivers);
+      setIsSaving(false);
+    }, 500);
     return () => clearTimeout(timer);
   }, [drivers, isInitialized, dbConnected]);
 
   useEffect(() => {
     if (!isInitialized || !dbConnected) return;
-    const timer = setTimeout(() => saveData('loads', loads), 1000);
+    const timer = setTimeout(async () => {
+      setIsSaving(true);
+      await saveData('loads', loads);
+      setIsSaving(false);
+    }, 500);
     return () => clearTimeout(timer);
   }, [loads, isInitialized, dbConnected]);
 
@@ -162,6 +183,23 @@ const App: React.FC = () => {
       setAiMessage("Erro ao limpar banco de dados.");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const forceSync = async () => {
+    setIsSaving(true);
+    try {
+      await Promise.all([
+        saveData('deliveries', deliveries),
+        saveData('drivers', drivers),
+        saveData('loads', loads)
+      ]);
+      setAiMessage("Sincronização forçada concluída!");
+      setTimeout(() => setAiMessage(null), 3000);
+    } catch (err) {
+      setAiMessage("Erro na sincronização manual.");
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -260,7 +298,9 @@ const App: React.FC = () => {
       updatedAt: new Date().toISOString(),
       lat: -1.4558 + (Math.random() * 0.1 - 0.05),
       lng: -48.4902 + (Math.random() * 0.1 - 0.05),
-      loadId: newLoadId
+      loadId: newLoadId,
+      notes: '',
+      receiptPhoto: ''
     }));
 
     setLoads(prev => [...prev, newLoad]);
@@ -582,11 +622,22 @@ const App: React.FC = () => {
           {activeView === 'ADMIN_PANEL' && (
             <div className="flex flex-col sm:flex-row items-center gap-3 w-full sm:w-auto">
               <div className={`px-4 py-2.5 rounded-xl border flex items-center gap-3 transition-all ${dbConnected ? 'bg-green-50 border-green-100 text-green-700' : 'bg-red-50 border-red-100 text-red-700'}`}>
-                <Database className={`w-4 h-4 ${dbConnected ? 'animate-pulse' : ''}`} />
+                <Database className={`w-4 h-4 ${dbConnected ? (isSaving ? 'animate-spin' : 'animate-pulse') : ''}`} />
                 <div className="text-left">
                   <p className="text-[8px] font-black uppercase tracking-widest leading-none mb-0.5">Status DB</p>
-                  <p className="text-[9px] font-bold leading-none">{dbConnected ? 'Sincronizado' : 'Desconectado'}</p>
+                  <p className="text-[9px] font-bold leading-none">
+                    {dbConnected ? (isSaving ? 'Sincronizando...' : 'Sincronizado') : 'Desconectado'}
+                  </p>
                 </div>
+                {dbConnected && (
+                  <button 
+                    onClick={forceSync}
+                    className="ml-1 p-1 hover:bg-green-100 rounded-lg transition-all"
+                    title="Sincronizar Agora"
+                  >
+                    <RotateCcw className={`w-3 h-3 ${isSaving ? 'animate-spin' : ''}`} />
+                  </button>
+                )}
                 {!dbConnected && (
                   <button 
                     onClick={loadStoredData}
