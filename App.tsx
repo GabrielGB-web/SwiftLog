@@ -42,10 +42,17 @@ const App: React.FC = () => {
   const [deliveries, setDeliveries] = useState<Delivery[]>([]);
   const [drivers, setDrivers] = useState<Driver[]>([]);
   const [loads, setLoads] = useState<Load[]>([]);
-  const [loggedRole, setLoggedRole] = useState<UserRole | null>(null);
-  const [activeView, setActiveView] = useState<string>('');
+  const [loggedRole, setLoggedRole] = useState<UserRole | null>(() => {
+    const saved = localStorage.getItem('swiftlog_role');
+    return (saved as UserRole) || null;
+  });
+  const [activeView, setActiveView] = useState<string>(() => {
+    return localStorage.getItem('swiftlog_view') || '';
+  });
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedDriverName, setSelectedDriverName] = useState<string>('');
+  const [selectedDriverName, setSelectedDriverName] = useState<string>(() => {
+    return localStorage.getItem('swiftlog_driver_name') || '';
+  });
   const [loading, setLoading] = useState(false);
   const [aiMessage, setAiMessage] = useState<string | null>(null);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -58,7 +65,9 @@ const App: React.FC = () => {
   const [authStep, setAuthStep] = useState<'CHOICE' | 'CREDENTIALS'>('CHOICE');
   const [selectedRole, setSelectedRole] = useState<UserRole | null>(null);
   const [passwordInput, setPasswordInput] = useState('');
-  const [driverLoginId, setDriverLoginId] = useState('');
+  const [driverLoginId, setDriverLoginId] = useState(() => {
+    return localStorage.getItem('swiftlog_driver_id') || '';
+  });
   const [showPassword, setShowPassword] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
 
@@ -77,6 +86,38 @@ const App: React.FC = () => {
   const [rejectionModal, setRejectionModal] = useState<{id: string, customer: string} | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (loggedRole) {
+      localStorage.setItem('swiftlog_role', loggedRole);
+    } else {
+      localStorage.removeItem('swiftlog_role');
+    }
+  }, [loggedRole]);
+
+  useEffect(() => {
+    if (activeView) {
+      localStorage.setItem('swiftlog_view', activeView);
+    } else {
+      localStorage.removeItem('swiftlog_view');
+    }
+  }, [activeView]);
+
+  useEffect(() => {
+    if (selectedDriverName) {
+      localStorage.setItem('swiftlog_driver_name', selectedDriverName);
+    } else {
+      localStorage.removeItem('swiftlog_driver_name');
+    }
+  }, [selectedDriverName]);
+
+  useEffect(() => {
+    if (driverLoginId) {
+      localStorage.setItem('swiftlog_driver_id', driverLoginId);
+    } else {
+      localStorage.removeItem('swiftlog_driver_id');
+    }
+  }, [driverLoginId]);
 
   const loadStoredData = async () => {
     setLoading(true);
@@ -236,6 +277,10 @@ const App: React.FC = () => {
     setSelectedDriverName('');
     setAuthError(null);
     setIsMenuOpen(false);
+    localStorage.removeItem('swiftlog_role');
+    localStorage.removeItem('swiftlog_view');
+    localStorage.removeItem('swiftlog_driver_name');
+    localStorage.removeItem('swiftlog_driver_id');
   };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -303,8 +348,26 @@ const App: React.FC = () => {
       receiptPhoto: ''
     }));
 
-    setLoads(prev => [...prev, newLoad]);
-    setDeliveries(prev => [...prev, ...newDeliveries]);
+    const updatedLoads = [...loads, newLoad];
+    const updatedDeliveries = [...deliveries, ...newDeliveries];
+
+    setLoads(updatedLoads);
+    setDeliveries(updatedDeliveries);
+    
+    // Força o salvamento imediato após importação para evitar perda em refresh
+    // Usamos as variáveis locais atualizadas para evitar race condition do estado
+    setIsSaving(true);
+    try {
+      await Promise.all([
+        saveData('loads', updatedLoads),
+        saveData('deliveries', updatedDeliveries)
+      ]);
+    } catch (err) {
+      console.error("Erro ao salvar importação:", err);
+    } finally {
+      setIsSaving(false);
+    }
+
     setPendingImport(null);
     setImportDriverId('');
     setLoadName('');

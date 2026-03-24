@@ -59,7 +59,7 @@ export const saveData = async (storeName: string, data: any[]) => {
       .upsert(data, { onConflict: 'id' });
 
     if (upsertError) {
-      console.error(`[dbService] Erro no upsert de "${storeName}":`, upsertError);
+      console.error(`[dbService] Erro no upsert de "${storeName}":`, upsertError.message, upsertError.details, upsertError.hint);
       throw upsertError;
     }
     
