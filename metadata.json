@@ -1,0 +1,8 @@
+{
+  "name": "SwiftLog - Sistema de Monitoramento de Entregas",
+  "description": "Uma plataforma completa para gestão de logística: upload de planilhas de carregamento, portal do motorista para check-out de entregas com foto do canhoto e rastreamento em tempo real.",
+  "requestFramePermissions": [
+    "geolocation",
+    "camera"
+  ]
+}
